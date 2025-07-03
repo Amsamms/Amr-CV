@@ -1,5 +1,7 @@
 // Wait for DOM to load
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM loaded, initializing audio players...');
+    
     // Initialize animations
     initializeAnimations();
     
@@ -14,6 +16,35 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Add floating particles
     initializeParticles();
+    
+    // Initialize audio players
+    initializeAudioPlayers();
+    
+    // Add audio visualization
+    addAudioVisualization();
+});
+
+// Backup initialization in case DOMContentLoaded fails
+if (document.readyState === 'loading') {
+    // DOM still loading
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('Backup: DOM loaded, initializing...');
+        setTimeout(initializeAudioPlayers, 100);
+    });
+} else {
+    // DOM already loaded
+    console.log('DOM already loaded, initializing immediately...');
+    setTimeout(initializeAudioPlayers, 100);
+}
+
+// Also try after window load as final fallback
+window.addEventListener('load', function() {
+    console.log('Window loaded, checking audio players...');
+    const buttons = document.querySelectorAll('.play-button');
+    if (buttons.length > 0 && !buttons[0].hasAttribute('data-initialized')) {
+        console.log('Reinitializing audio players...');
+        initializeAudioPlayers();
+    }
 });
 
 // Initialize scroll animations
@@ -342,3 +373,224 @@ style.textContent = `
     }
 `;
 document.head.appendChild(style);
+
+// Add audio player functionality
+function initializeAudioPlayers() {
+    console.log('Initializing audio players...');
+    
+    const playButtons = document.querySelectorAll('.play-button');
+    const audioPlayers = document.querySelectorAll('audio');
+    
+    console.log('Found play buttons:', playButtons.length);
+    console.log('Found audio elements:', audioPlayers.length);
+    
+    if (playButtons.length === 0) {
+        console.error('No play buttons found!');
+        return;
+    }
+    
+    playButtons.forEach((button, index) => {
+        console.log(`Setting up button ${index + 1}:`, button);
+        
+        button.addEventListener('click', function(e) {
+            e.preventDefault();
+            console.log('Play button clicked:', this);
+            
+            const audioId = this.getAttribute('data-audio');
+            console.log('Audio ID:', audioId);
+            
+            const audio = document.getElementById(audioId);
+            console.log('Audio element found:', audio);
+            
+            if (!audio) {
+                console.error('Audio element not found for ID:', audioId);
+                alert('خطأ: لم يتم العثور على الملف الصوتي');
+                return;
+            }
+            
+            const audioPlayer = audio.parentElement;
+            const progressBar = audioPlayer.querySelector('.progress-bar');
+            const timeDisplay = audioPlayer.querySelector('.time-display');
+            const playIcon = this.querySelector('i');
+            const playText = this.querySelector('span');
+            
+            console.log('Audio player elements:', {
+                audioPlayer,
+                progressBar,
+                timeDisplay,
+                playIcon,
+                playText
+            });
+            
+            // Stop all other audio players
+            audioPlayers.forEach(otherAudio => {
+                if (otherAudio !== audio && !otherAudio.paused) {
+                    console.log('Stopping other audio:', otherAudio.id);
+                    otherAudio.pause();
+                    const otherButton = document.querySelector(`[data-audio="${otherAudio.id}"]`);
+                    const otherPlayer = otherAudio.parentElement;
+                    const otherIcon = otherButton.querySelector('i');
+                    const otherText = otherButton.querySelector('span');
+                    
+                    otherButton.classList.remove('playing');
+                    otherPlayer.classList.remove('active');
+                    otherIcon.className = 'fas fa-play';
+                    otherText.textContent = 'تشغيل';
+                }
+            });
+            
+            if (audio.paused) {
+                console.log('Playing audio:', audioId);
+                // Play audio
+                audio.play().then(() => {
+                    console.log('Audio started playing successfully');
+                    this.classList.add('playing');
+                    audioPlayer.classList.add('active');
+                    playIcon.className = 'fas fa-pause';
+                    playText.textContent = 'إيقاف';
+                }).catch(error => {
+                    console.error('Error playing audio:', error);
+                    alert('حدث خطأ في تشغيل الملف الصوتي. تأكد من وجود الملف: ' + audioId + '.mpeg');
+                });
+            } else {
+                console.log('Pausing audio:', audioId);
+                // Pause audio
+                audio.pause();
+                this.classList.remove('playing');
+                playIcon.className = 'fas fa-play';
+                playText.textContent = 'تشغيل';
+            }
+        });
+    });
+    
+    // Add audio event listeners
+    audioPlayers.forEach(audio => {
+        const button = document.querySelector(`[data-audio="${audio.id}"]`);
+        const audioPlayer = audio.parentElement;
+        const progressContainer = audioPlayer.querySelector('.progress-container');
+        const progressBar = audioPlayer.querySelector('.progress-bar');
+        const timeDisplay = audioPlayer.querySelector('.time-display');
+        const playIcon = button.querySelector('i');
+        const playText = button.querySelector('span');
+        
+        // Update progress and time
+        audio.addEventListener('timeupdate', function() {
+            if (audio.duration) {
+                const progressPercent = (audio.currentTime / audio.duration) * 100;
+                progressBar.style.width = progressPercent + '%';
+                
+                const currentMinutes = Math.floor(audio.currentTime / 60);
+                const currentSeconds = Math.floor(audio.currentTime % 60);
+                const durationMinutes = Math.floor(audio.duration / 60);
+                const durationSeconds = Math.floor(audio.duration % 60);
+                
+                timeDisplay.textContent = 
+                    `${currentMinutes.toString().padStart(2, '0')}:${currentSeconds.toString().padStart(2, '0')} / ` +
+                    `${durationMinutes.toString().padStart(2, '0')}:${durationSeconds.toString().padStart(2, '0')}`;
+            }
+        });
+        
+        // Handle audio end
+        audio.addEventListener('ended', function() {
+            button.classList.remove('playing');
+            audioPlayer.classList.remove('active');
+            playIcon.className = 'fas fa-play';
+            playText.textContent = 'تشغيل';
+            progressBar.style.width = '0%';
+            timeDisplay.textContent = '00:00 / 00:00';
+        });
+        
+        // Handle progress bar click
+        progressContainer.addEventListener('click', function(e) {
+            if (audio.duration) {
+                const rect = progressContainer.getBoundingClientRect();
+                const clickX = e.clientX - rect.left;
+                const progressPercent = (clickX / rect.width) * 100;
+                const newTime = (progressPercent / 100) * audio.duration;
+                audio.currentTime = newTime;
+                console.log('Seeking to:', newTime);
+            }
+        });
+        
+        // Check if audio file can be loaded
+        audio.addEventListener('loadstart', function() {
+            console.log('Started loading audio:', audio.id);
+        });
+        
+        audio.addEventListener('canplay', function() {
+            console.log('Audio can start playing:', audio.id);
+        });
+        
+        // Handle audio load error
+        audio.addEventListener('error', function(e) {
+            console.error('Error loading audio file:', audio.src, e);
+            button.disabled = true;
+            button.style.opacity = '0.5';
+            button.style.cursor = 'not-allowed';
+            playText.textContent = 'ملف غير متوفر';
+            alert('خطأ في تحميل الملف الصوتي: ' + audio.id);
+        });
+        
+        // Handle audio load success
+        audio.addEventListener('loadedmetadata', function() {
+            console.log('Audio metadata loaded for:', audio.id);
+            const durationMinutes = Math.floor(audio.duration / 60);
+            const durationSeconds = Math.floor(audio.duration % 60);
+            timeDisplay.textContent = 
+                `00:00 / ${durationMinutes.toString().padStart(2, '0')}:${durationSeconds.toString().padStart(2, '0')}`;
+        });
+    });
+}
+
+// Mark buttons as initialized
+function markButtonsAsInitialized() {
+    document.querySelectorAll('.play-button').forEach(button => {
+        button.setAttribute('data-initialized', 'true');
+    });
+}
+
+// Add audio visualization effect
+function addAudioVisualization() {
+    const audioItems = document.querySelectorAll('.audio-item');
+    
+    audioItems.forEach(item => {
+        const audio = item.querySelector('audio');
+        const icon = item.querySelector('.audio-icon i');
+        
+        audio.addEventListener('play', function() {
+            icon.style.animation = 'pulse 1s infinite';
+        });
+        
+        audio.addEventListener('pause', function() {
+            icon.style.animation = '';
+        });
+        
+        audio.addEventListener('ended', function() {
+            icon.style.animation = '';
+        });
+    });
+}
+
+// Initialize everything when DOM loads
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize animations
+    initializeAnimations();
+    
+    // Add smooth scrolling
+    initializeSmoothScrolling();
+    
+    // Add interactive effects
+    initializeInteractiveEffects();
+    
+    // Add typing effect to name
+    initializeTypingEffect();
+    
+    // Add floating particles
+    initializeParticles();
+    
+    // Initialize audio players
+    initializeAudioPlayers();
+    
+    // Add audio visualization
+    addAudioVisualization();
+});
